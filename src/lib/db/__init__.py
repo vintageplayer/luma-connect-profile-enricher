@@ -6,6 +6,7 @@ from .postgres import (
     insert_record,
     execute_query,
     insert_multiple_records,
+    upsert_multiple_records,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     'insert_record',
     'execute_query',
     'insert_multiple_records',
+    'upsert_multiple_records',
 ]

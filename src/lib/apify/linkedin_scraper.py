@@ -15,23 +15,23 @@ load_dotenv(find_dotenv('.env.local'))
 
 def get_linkedin_profiles(linkedin_urls):
     """
-    Fetch LinkedIn profiles using Apify LinkedIn Profile Scraper actor.
+    Fetch LinkedIn profiles from Apify API.
+
+    Returns raw profile data exactly as Apify returns it.
+    No processing, no filtering, no mapping.
 
     Args:
         linkedin_urls (list): List of full LinkedIn profile URLs
                              e.g., ["https://www.linkedin.com/in/artsofbaniya"]
 
     Returns:
-        list: List of profile dictionaries with fields like:
-              - fullName, firstName, lastName
-              - headline, about, connections, followers
-              - urn (LinkedIn URN identifier)
-              - experiences, skills, educations
-              - etc.
-              Returns empty list if error occurs.
+        list: Raw profile dicts from Apify API response.
+              May return fewer profiles than input URLs if some profiles
+              are unavailable, private, or invalid.
+              Empty list if API error occurs.
 
     Raises:
-        Exception: If Apify API token or actor ID not configured
+        Exception: If APIFY_API_TOKEN not set in environment
     """
     # Get credentials from environment
     api_token = os.getenv('APIFY_API_TOKEN')
@@ -48,28 +48,21 @@ def get_linkedin_profiles(linkedin_urls):
         "profileUrls": linkedin_urls
     }
 
-    print(f"Calling Apify actor {actor_id} with {len(linkedin_urls)} profiles...")
+    print(f"Fetching {len(linkedin_urls)} LinkedIn profiles from Apify...")
 
     try:
         # Run the Actor and wait for it to finish
         run = client.actor(actor_id).call(run_input=run_input)
-
         print(f"Actor run completed. Run ID: {run.get('id')}")
 
         # Fetch Actor results from the run's dataset
-        profiles = []
-        dataset_id = run["defaultDatasetId"]
+        profiles = list(client.dataset(run["defaultDatasetId"]).iterate_items())
 
-        print(f"Fetching results from dataset {dataset_id}...")
-
-        for item in client.dataset(dataset_id).iterate_items():
-            profiles.append(item)
-
-        print(f"Successfully fetched {len(profiles)} profiles")
+        print(f"Apify returned {len(profiles)} profiles")
         return profiles
 
     except Exception as e:
-        print(f"Error calling Apify actor: {e}")
+        print(f"Apify API error: {e}")
         return []
 
 

@@ -199,3 +199,48 @@ def insert_multiple_records(records, schema_and_table, inserted_columns, ignore_
     except psycopg2.Error as e:
         _connection.rollback()
         print(f"The error '{e}' occurred")
+
+
+def upsert_multiple_records(records, schema_and_table, inserted_columns, conflict_columns, update_columns):
+    """
+    Upsert multiple records efficiently using ON CONFLICT DO UPDATE.
+
+    Args:
+        records (list): List of tuples containing values to insert
+        schema_and_table (str): Table name (e.g., 'luma.linkedin_profiles')
+        inserted_columns (list): List of all column names for INSERT
+        conflict_columns (list): List of columns for conflict detection
+        update_columns (list): List of columns to update on conflict
+
+    Returns:
+        int: -1 if connection not available, None otherwise
+    """
+    if not _connection:
+        return -1
+
+    inserted_columns_string = ', '.join(inserted_columns)
+    conflict_columns_string = ', '.join(conflict_columns)
+    cursor = _connection.cursor()
+
+    # Build UPDATE SET clause
+    update_set_parts = [f"{col} = EXCLUDED.{col}" for col in update_columns]
+    # Add timestamp update
+    update_set_parts.append("last_refreshed_at = (extract(epoch FROM now())*1000)::BIGINT")
+    update_set_parts.append("_updated_at = (extract(epoch FROM now())*1000)::BIGINT")
+    update_set_string = ', '.join(update_set_parts)
+
+    query_string = f"""
+        INSERT INTO {schema_and_table} ({inserted_columns_string})
+        VALUES %s
+        ON CONFLICT ({conflict_columns_string})
+        DO UPDATE SET {update_set_string}
+    """
+
+    try:
+        execute_values(cursor, query_string, records)
+        _connection.commit()
+        print(f"Successfully upserted {len(records)} records")
+    except psycopg2.Error as e:
+        _connection.rollback()
+        print(f"Upsert error: {e}")
+        raise
