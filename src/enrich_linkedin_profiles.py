@@ -17,28 +17,52 @@ from lib.utils import (
 
 def fetch_guests_pending_for_enrichment(limit):
     """
-    Fetch guests with LinkedIn handles but no profile data yet.
+    Fetch guests with LinkedIn handles needing enrichment or retry.
+
+    Fetches guests that either:
+    1. Have never been enriched (no record in linkedin_profiles)
+    2. Failed enrichment but under max retry limit (retry_count < 3)
+    3. Retry backoff period has passed (next_retry_after < current_time)
 
     Args:
         limit: Maximum number of guests to fetch
 
     Returns:
-        list: List of tuples (luma_guest_api_id, guest_name, linkedin_handle)
+        list: List of tuples (luma_guest_api_id, guest_name, linkedin_handle, retry_count)
               or None if connection failed
     """
+    import time
+    current_timestamp = int(time.time() * 1000)
+
     query = """
-    SELECT luma_guest_api_id, guest_name, linkedin_handle
+    SELECT
+        g.luma_guest_api_id,
+        g.guest_name,
+        g.linkedin_handle,
+        COALESCE(lp.retry_count, 0) as retry_count
     FROM luma.guests g
+    LEFT JOIN luma.linkedin_profiles lp
+        ON lp.luma_guest_api_id = g.luma_guest_api_id
     WHERE g.linkedin_handle IS NOT NULL
-    AND NOT EXISTS (
-        SELECT 1 FROM luma.linkedin_profiles lp
-        WHERE lp.luma_guest_api_id = g.luma_guest_api_id
+    AND (
+        -- Never enriched
+        lp.luma_guest_api_id IS NULL
+        OR
+        -- Failed enrichment eligible for retry
+        (
+            lp.profile_found = FALSE
+            AND lp.retry_count < 3
+            AND (lp.next_retry_after IS NULL OR lp.next_retry_after < %s)
+        )
     )
+    ORDER BY
+        COALESCE(lp.retry_count, 0) ASC,  -- Prioritize new attempts
+        lp.last_retry_at ASC NULLS FIRST  -- Then oldest retries
     LIMIT %s
     """
 
     if open_connection():
-        results = execute_query(query, params=(limit,), is_select_query=True)
+        results = execute_query(query, params=(current_timestamp, limit), is_select_query=True)
         close_connection()
         return results
     return None
@@ -89,6 +113,9 @@ def upsert_linkedin_profiles(profile_records):
         'profile_pic_high_quality_url',
         'top_skills_by_endorsements',
         'profile_data',
+        'retry_count',
+        'last_retry_at',
+        'next_retry_after',
     ]
 
     # Columns to detect conflicts (unique constraint)
@@ -134,7 +161,15 @@ def enrich_linkedin_profiles(batch_size):
         print("No guests need LinkedIn enrichment")
         return
 
+    # Count retries vs new attempts
+    retry_counts = [guest[3] if len(guest) > 3 else 0 for guest in pending_guests]
+    new_attempts = sum(1 for count in retry_counts if count == 0)
+    retries = len(pending_guests) - new_attempts
+
     print(f"Found {len(pending_guests)} guests needing enrichment")
+    if retries > 0:
+        print(f"  - {new_attempts} new attempts")
+        print(f"  - {retries} retries")
 
     # Step 2: Build LinkedIn URLs and call Apify API
     linkedin_urls = [
