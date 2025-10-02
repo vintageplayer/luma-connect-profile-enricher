@@ -28,4 +28,4 @@ docker run --rm \
     -w /app/tests \
     -v $(pwd)/.env.local:/app/.env.local \
     -v $(pwd)/tests:/app/tests \
-    "$DOCKER_IMAGE_TAG" test_db.py
+    "$DOCKER_IMAGE_TAG" "$@"
