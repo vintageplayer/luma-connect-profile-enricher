@@ -22,5 +22,5 @@ echo "Running Docker container: $DOCKER_IMAGE_TAG"
 
 # Run the Docker container
 docker run --rm \
-    -v $(pwd)/.env.local:/app/.env.local \
+    --env-file .env.local \
     "$DOCKER_IMAGE_TAG" "$@"

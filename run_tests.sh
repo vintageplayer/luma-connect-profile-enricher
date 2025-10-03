@@ -2,7 +2,7 @@
 
 # Load environment variables from .env.local
 if [ -f .env.local ]; then
-    . .env.local
+    . ./.env.local
     export DOCKER_IMAGE_TAG
 else
     echo "Error: .env.local file not found"
@@ -26,6 +26,6 @@ echo "Running tests in Docker container: $DOCKER_IMAGE_TAG"
 # Override entrypoint to use shell and set PYTHONPATH properly
 docker run --rm \
     -w /app/tests \
-    -v $(pwd)/.env.local:/app/.env.local \
+    --env-file .env.local \
     -v $(pwd)/tests:/app/tests \
     "$DOCKER_IMAGE_TAG" "$@"
