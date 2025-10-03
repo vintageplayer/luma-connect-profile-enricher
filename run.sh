@@ -2,7 +2,7 @@
 
 # Load environment variables from .env.local
 if [ -f .env.local ]; then
-    . .env.local
+    . ./.env.local
     export DOCKER_IMAGE_TAG
 else
     echo "Error: .env.local file not found"
